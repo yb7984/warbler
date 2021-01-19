@@ -112,7 +112,8 @@ class User(db.Model):
 
     likes = db.relationship(
         'Message',
-        secondary="likes"
+        secondary="likes" ,
+        backref="likes_users"
     )
 
     def __repr__(self):
@@ -129,6 +130,13 @@ class User(db.Model):
 
         found_user_list = [user for user in self.following if user == other_user]
         return len(found_user_list) == 1
+
+    def is_like(self , check_message):
+        """Is this user like check_message"""
+
+        found_message_list = [message for message in self.likes if message.id == check_message.id]
+
+        return len(found_message_list) == 1
 
     @classmethod
     def signup(cls, username, email, password, image_url):
@@ -198,6 +206,12 @@ class Message(db.Model):
     )
 
     user = db.relationship('User')
+
+    def is_liked_by(self , check_user):
+        """Check if message is liked by a user"""
+        found_user_list = [user for user in self.likes_users if user == check_user]
+
+        return len(found_user_list) == 1
 
 
 def connect_db(app):

@@ -1,11 +1,11 @@
 import os
 
-from flask import Flask, render_template, request, flash, redirect, session, g
+from flask import Flask, render_template, request, flash, redirect, session, g , url_for
 from flask_debugtoolbar import DebugToolbarExtension
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError,InvalidRequestError
 
-from forms import UserAddForm, LoginForm, MessageForm
-from models import db, connect_db, User, Message
+from forms import UserAddForm, LoginForm, MessageForm , UserEditForm
+from models import db, connect_db, User, Message , Likes , Follows
 
 CURR_USER_KEY = "curr_user"
 
@@ -67,6 +67,7 @@ def signup():
 
     form = UserAddForm()
 
+
     if form.validate_on_submit():
         try:
             user = User.signup(
@@ -113,7 +114,9 @@ def login():
 def logout():
     """Handle logout of user."""
 
-    # IMPLEMENT THIS
+    do_logout()
+
+    return redirect(url_for('login'))
 
 
 ##############################################################################
@@ -211,8 +214,44 @@ def stop_following(follow_id):
 def profile():
     """Update profile for current user."""
 
-    # IMPLEMENT THIS
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect(url_for('login'))
 
+    form = UserEditForm(obj=g.user)
+
+    if form.validate_on_submit():
+        username = form.username.data
+        password = form.password.data
+
+        user = User.authenticate(g.user.username , password)
+
+        if user:
+            user.username = form.username.data
+            user.email = form.email.data
+            user.image_url = form.image_url.data
+            user.header_image_url = form.header_image_url.data
+            user.bio = form.bio.data
+
+            try:
+                db.session.commit()
+
+                return redirect(url_for('users_show' , user_id=user.id))
+            except IntegrityError:
+                db.session.rollback()
+
+                flash("Username or Email already taken", 'danger')
+                return render_template('users/edit.html' , form=form , user=user)
+        else:
+            flash("Access unauthorized.", "danger")
+            return redirect('/')
+
+    else:
+        return render_template('users/edit.html' , form=form , user=g.user)
+
+    
+
+    
 
 @app.route('/users/delete', methods=["POST"])
 def delete_user():
@@ -278,6 +317,42 @@ def messages_destroy(message_id):
 
     return redirect(f"/users/{g.user.id}")
 
+@app.route('/users/add_like/<int:message_id>' , methods=["POST"])
+def messages_add_like(message_id):
+    """Add like to a message"""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    msg = Message.query.get_or_404(message_id)
+
+    if g.user.is_like(msg):
+        # alrealy like this message, unlike it
+
+        Likes.query.filter(Likes.user_id==g.user.id , Likes.message_id==msg.id).delete()
+        db.session.commit()
+
+        return redirect('/')
+
+    # like this message
+    like = Likes(user_id = g.user.id , message_id=message_id)
+
+    db.session.add(like)
+    db.session.commit()
+
+    return redirect('/')
+
+@app.route('/users/<int:user_id>/likes')
+def show_likes(user_id):
+    """Show list of messages this user likes."""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    user = User.query.get_or_404(user_id)
+    return render_template('users/likes.html', user=user)
 
 ##############################################################################
 # Homepage and error pages
@@ -292,13 +367,18 @@ def homepage():
     """
 
     if g.user:
+
+        user_ids = [g.user.id , *[user.id for user in g.user.following]]
+
         messages = (Message
                     .query
+                    .filter(Message.user_id.in_(user_ids))
                     .order_by(Message.timestamp.desc())
                     .limit(100)
                     .all())
+        likes = [like.message_id for like in db.session.query(Likes).filter(Likes.user_id == g.user.id).all()]
 
-        return render_template('home.html', messages=messages)
+        return render_template('home.html', messages=messages , likes=likes)
 
     else:
         return render_template('home-anon.html')
