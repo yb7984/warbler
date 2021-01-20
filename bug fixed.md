@@ -14,3 +14,15 @@ _Change to:_
   ```
 
 
+- messages_destroy()
+  
+    Bug:Any login user can delete any message. 
+
+    Fix:Make sure check the message user_id with the current login user_id
+
+```python
+    if g.user.id != msg.user_id:
+        #can only delete your own message
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+```
