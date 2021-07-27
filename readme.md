@@ -1,5 +1,5 @@
 # Warbler
-This is a twiter clone project using Python and PostgreSQL.
+This is a twitter clone project using Python and PostgreSQL.
 
 
 ## Authors
